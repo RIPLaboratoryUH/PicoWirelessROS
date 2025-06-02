@@ -5,7 +5,7 @@ import socket
 import threading
 
 # Customize this
-node_name = 'motor_19_voltage'
+node_name = 'm19_shunt_voltage'
 
 # Set your UDP listening address and port
 LISTEN_IP = ''  # Listen on all interfaces
