@@ -17,7 +17,7 @@ SEND_INTERVAL = 0.01  # seconds
 
 # ==== I2C & ADC Setup ====
 i2c = I2C(0, scl=Pin(17), sda=Pin(16), freq=400000)
-adc = ADS1115(i2c, address=72, gain=4)
+adc = ADS1115(i2c, address=72, gain=5)
 
 # Create UDP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -46,6 +46,21 @@ def connect():
     pico_led.on()
     return ip
 
+def log_data(filename, *values):
+    """
+    Appends data to a log file. Values are comma-separated.
+    
+    Parameters:
+        filename (str): Name of the file to log to (e.g., 'log.txt')
+        *values: Any number of values to log
+    """
+    try:
+        with open(filename, "a") as f:
+            line = ",".join(str(v) for v in values) + "\n"
+            f.write(line)
+    except Exception as e:
+        print("Logging error:", e)
+
 connect()
 
 try:
@@ -54,11 +69,14 @@ try:
         msg = f"{timestamp}, {sensor_value:.8f}\n"
         sock.sendto(msg.encode(), (BROADCAST_IP, UDP_PORT))
         print("Sent:", msg.strip())
+        log_data("log.txt", timestamp, sensor_value)
         time.sleep(SEND_INTERVAL)
 
 except KeyboardInterrupt:
     print("Stopped.")
 finally:
     sock.close()
+
+
 
 
