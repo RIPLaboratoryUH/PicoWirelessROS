@@ -66,10 +66,11 @@ connect()
 try:
     while True:
         sensor_value, timestamp = read_sensor()
-        msg = f"{timestamp}, {sensor_value:.8f}\n"
-        sock.sendto(msg.encode(), (BROADCAST_IP, UDP_PORT))
-        print("Sent:", msg.strip())
-        log_data("log.txt", timestamp, sensor_value)
+        if sensor_value >= 0.0001:
+            msg = f"{timestamp}, {sensor_value:.8f}\n"
+            sock.sendto(msg.encode(), (BROADCAST_IP, UDP_PORT))
+            print("Sent:", msg.strip())
+            log_data("log.txt", timestamp, sensor_value)
         time.sleep(SEND_INTERVAL)
 
 except KeyboardInterrupt:
