@@ -5,7 +5,9 @@ import machine
 import rp2
 import sys
 import time
-from machine import ADC
+from machine import ADC, I2C, Pin
+from bno055 import BNO055
+from ads1x15 import ADS1115
 
 # ==== Wi-Fi Settings ====
 ssid = 'riplab'
@@ -14,24 +16,19 @@ UDP_PORT = 8816
 BROADCAST_IP = '192.168.1.255'
 SEND_INTERVAL = 0.01  # seconds
 
-#==== ADC Settngs for Pico W
-adc = ADC(26)
-# Reference voltage for ADC (typically 3.3V on the Pico)
-VREF = 3.3
-# 12-bit ADC -> values range from 0 to 4095
-ADC_RESOLUTION = 4095
+
+# ==== I2C & ADC Setup ====
+i2c0 = I2C(0, scl=Pin(17), sda=Pin(16), freq=400000)
+adc = ADS1115(i2c0, address=72, gain=5)
 
 
-# Create UDP socket
+# ==== Initialize IMU (BNO055 on I2C1, GP14=SDA, GP15=SCL) ====
+i2c1 = I2C(1, scl=Pin(15), sda=Pin(14), freq=400000)
+imu = BNO055(i2c1)
+
+# ==== UDP Socket ====
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-
-def read_voltage():
-    raw_value = adc.read_u16()
-    scaled_value = raw_value >> 4
-    voltage = (scaled_value / ADC_RESOLUTION) * VREF
-    timestamp_us = time.ticks_us()
-    return voltage, timestamp_us
 
 def connect():
     wlan = network.WLAN(network.STA_IF)
@@ -50,17 +47,49 @@ def connect():
     pico_led.on()
     return ip
 
+def log_data(filename, *values):
+    """
+    Appends data to a log file. Values are comma-separated.
+    
+    Parameters:
+        filename (str): Name of the file to log to (e.g., 'log.txt')
+        *values: Any number of values to log
+    """
+    try:
+        with open(filename, "a") as f:
+            line = ",".join(str(v) for v in values) + "\n"
+            f.write(line)
+    except Exception as e:
+        print("Logging error:", e)
+
+def read_voltage():
+    timestamp = time.ticks_us()
+    raw = adc.read(0, 2, 3)
+    voltage = adc.raw_to_v(raw)
+    return voltage, timestamp
+
 connect()
 
+# ==== Main Loop ====
 try:
     while True:
         voltage, timestamp = read_voltage()
-        msg = f"{timestamp},{voltage:.4f}\n"
+        heading, roll, pitch = imu.read_imu()
+
+        if heading is not None:
+            msg = f"{timestamp},{voltage:.8f},{heading:.4f},{roll:.4f},{pitch:.4f}\n"
+        else:
+            msg = f"{timestamp},{voltage:.8f},NaN,NaN,NaN\n"
+
         sock.sendto(msg.encode(), (BROADCAST_IP, UDP_PORT))
         print("Sent:", msg.strip())
+        if voltage >= 0.0001:
+            log_data("log.txt", timestamp, voltage)
+
         time.sleep(SEND_INTERVAL)
 
 except KeyboardInterrupt:
     print("Stopped.")
 finally:
     sock.close()
+
